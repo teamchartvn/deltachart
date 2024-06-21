@@ -34,7 +34,15 @@ namespace NinjaTrader.NinjaScript.Indicators
 		private Series<double>  ZigZag;
         private bool trend; // true tăng , false giảm
         
-
+		private double doLech;
+		// điểm đỉnh đáy ZZ
+        private double lowPoint, highPoint;
+		
+		public int Depth ;
+        public double Deviation;
+        public int Backstep ;
+		private bool timDinh=false; // true => tim day , false tim Dinh
+		
         protected override void OnStateChange()
         {
             if (State == State.SetDefaults)
@@ -43,11 +51,11 @@ namespace NinjaTrader.NinjaScript.Indicators
                 Name = "1.ZigZagCustom";
                 Calculate = Calculate.OnEachTick;
                 IsOverlay = true;
-                AddPlot(Brushes.Goldenrod, "ZigZag");
+                AddPlot(new Stroke(Brushes.Yellow),PlotStyle.Line, "ZigZag");
 				
 				
 				// Thiết lập các giá trị mặc định cho ZZ
-				Deviation =0.05;
+				Deviation =20;
 				Backstep =3;
 				Depth =12;
 				
@@ -55,8 +63,12 @@ namespace NinjaTrader.NinjaScript.Indicators
 			else if (State == State.Configure)
 			{
 			
-				 lastLow =lastLowBar =0; // Khi bắt đầu tất cả = 0
-				 lastHigh = lastHighBar =0;
+				 lastLow =lastLowBar = 0; // Khi bắt đầu tất cả = 0
+				 lastHigh = lastHighBar = 0;
+				 doLech = 20* TickSize;
+				Print( "dolec :  " +doLech);
+				lowPoint = highPoint =0;          
+				
 			}
 			else if (State == State.DataLoaded)
 			{
@@ -66,74 +78,95 @@ namespace NinjaTrader.NinjaScript.Indicators
 
         protected override void OnBarUpdate()
         {
-			if(IsFirstTickOfBar &&CurrentBars[0]!=0 )
-				return;
-			Print("Tick dau tien cua nen");
-            if(trend) // trend tăng
+			if( BarsInProgress ==0)
 			{
-				if(High[1] > lastHigh)
-				{  // Chế độ ontick , chạy ở fistoftick
-				  lastHigh = High[1];
-				  lastHighBar = CurrentBars[0]-1; 
-			    }
+			
+			if(!IsFirstTickOfBar || CurrentBars[0] <2 )
+			{
+				if( CurrentBars[0] ==0)
+				{
+				 //  Print("??? " + High[CurrentBars[0]-1]);
+				  lastHigh =  BarsArray[0].GetHigh(0);
+				  lastLow   = BarsArray[0].GetLow(0);
+				}
 				
-				if (lastHigh  > (1+Deviation)*lastLow && CurrentBar - lastHighBar >= Backstep) // độ lệch + backstep
-                {
-                    trend = false;  // Đổi đảo qua trend giảm
-                    ZigZag[1]= lastHigh;
-                    lastLow = Low[1];
-                    lastLowBar = CurrentBars[0]-1;
-					
-					//plot
-					  Values[0][lastHighBar] = lastHigh;
-					Print( "đỉnh : " +lastHighBar);
-                }
-			}
-            
-			
-			if(!trend)  // trend giảm
-			{
-				if(Low[1] < lastLow)
-			    {
-				    lastLow = Low[1];
-				    lastLowBar = CurrentBars[0]-1; 
-			    }
-				if (lastLow  < (1+Deviation)*lastHigh && CurrentBar - lastHighBar >= Backstep) // độ lệch + backstep
-                {
-                    trend = true; // Đảo qua tăng 
-					
-                    ZigZag[1] = lastLow;
-                    lastHigh = High[1];
-                    lastHighBar = CurrentBars[0]-1;
-					
-					//plot
-					  Values[0][lastLowBar] = lastLow;
-					Print( "đáy : " + lastLowBar);
-                }
+				return;
 			}
 			
 			
+			Draw.Text(this, (CurrentBars[0]-1).ToString()+ "index",(CurrentBars[0]-1).ToString(),1 , High[1] + 5*TickSize);
+			Print(CurrentBar-1);
+				if(timDinh){
+					
+					if(High[1] >=lastHigh){
+						lastHigh = High[1];
+						lastHighBar = CurrentBar-1;
+						//vẽ
+						Values[0][0] = lastHigh;
+						 PlotBrushes[0][0] = Brushes.Green;
+					}
+					else{  // Nếu có đỉnh mà trend bắt đầu giảm
+						
+						if(CurrentBar-1 -lastHighBar > Backstep){
+							Print(" Xac nhan DINH Backstep");
+							 // in giá trị HH ( đỉnh của zz )
+							ZigZag[0] = lastHigh;
+							
+							if(CurrentBar-1 - lastHighBar >= Depth && lastHigh - Low[1] >= Deviation)
+							{
+								lastLow = Low[1];  // Đặt lại giá trị lastLow
+								timDinh = false; // đã xác định được đáy thỏa mãn 3 điều kiện
+							}
+						}
+					}
+				}
+				else
+				{
+					if(Low[1] <= lastLow){
+						lastLow = Low[1];
+					    lastLowBar = CurrentBar-1;
+						
+						// vẽ 
+						Values[0][0] = lastLow;
+						PlotBrushes[0][0] = Brushes.Red;
+					}
+					
+					else{// nếu có đáy mà giá tăng trend up khi có đáy
+						if(CurrentBar-1 - lastLowBar > Backstep)  // hiển thị đáy
+						{
+							Print(" Xac nhan DAY Backstep");
+							ZigZag[1] = lastLow;
+							if(CurrentBar-1 - lastLowBar  >= Depth && High[1] - lastLow >= Deviation)
+							{
+								lastHigh = High[1];
+								timDinh = true;
+							}
+						}
+					}
+					
+				}
+				
+				
+				
+				
+				
+				
+				
+				
+
+					// end BarsInProgress=0
+				
+			}   
 			
-			
-            
-        }
+        } // end onbarupdate
 
-    
-      [NinjaScriptProperty]
-        [Range(1, int.MaxValue)]
-        [Display(Name="Depth", Order=1, GroupName="Parameters")]
-        public int Depth { get; set; }
+    				//	Draw.Dot(this, CurrentBar.ToString() +"xanh", true, 1, Low[1] - 5*TickSize, Brushes.Cyan );
+				  //Draw.Text (this ,CurrentBars[0]-1,"x",true, )
+				  //Draw.Dot(NinjaScriptBase owner, string tag, bool isAutoScale, int barsAgo, double y, Brush brush)
+					//Draw.Dot(this, CurrentBar.ToString()+"do", true, 1, Low[1] - 5*TickSize, Brushes.Red );
 
-        [NinjaScriptProperty]
-        [Range(0.0, double.MaxValue)]
-        [Display(Name="Deviation", Order=2, GroupName="Parameters")]
-        public double Deviation { get; set; }
 
-        [NinjaScriptProperty]
-        [Range(1, int.MaxValue)]
-        [Display(Name="Backstep", Order=3, GroupName="Parameters")]
-        public int Backstep { get; set; }
-    }
+    } //end class
 }
 
 #region NinjaScript generated code. Neither change nor remove.
@@ -143,18 +176,18 @@ namespace NinjaTrader.NinjaScript.Indicators
 	public partial class Indicator : NinjaTrader.Gui.NinjaScript.IndicatorRenderBase
 	{
 		private ZigZagCustom[] cacheZigZagCustom;
-		public ZigZagCustom ZigZagCustom(int depth, double deviation, int backstep)
+		public ZigZagCustom ZigZagCustom()
 		{
-			return ZigZagCustom(Input, depth, deviation, backstep);
+			return ZigZagCustom(Input);
 		}
 
-		public ZigZagCustom ZigZagCustom(ISeries<double> input, int depth, double deviation, int backstep)
+		public ZigZagCustom ZigZagCustom(ISeries<double> input)
 		{
 			if (cacheZigZagCustom != null)
 				for (int idx = 0; idx < cacheZigZagCustom.Length; idx++)
-					if (cacheZigZagCustom[idx] != null && cacheZigZagCustom[idx].Depth == depth && cacheZigZagCustom[idx].Deviation == deviation && cacheZigZagCustom[idx].Backstep == backstep && cacheZigZagCustom[idx].EqualsInput(input))
+					if (cacheZigZagCustom[idx] != null &&  cacheZigZagCustom[idx].EqualsInput(input))
 						return cacheZigZagCustom[idx];
-			return CacheIndicator<ZigZagCustom>(new ZigZagCustom(){ Depth = depth, Deviation = deviation, Backstep = backstep }, input, ref cacheZigZagCustom);
+			return CacheIndicator<ZigZagCustom>(new ZigZagCustom(), input, ref cacheZigZagCustom);
 		}
 	}
 }
@@ -163,14 +196,14 @@ namespace NinjaTrader.NinjaScript.MarketAnalyzerColumns
 {
 	public partial class MarketAnalyzerColumn : MarketAnalyzerColumnBase
 	{
-		public Indicators.ZigZagCustom ZigZagCustom(int depth, double deviation, int backstep)
+		public Indicators.ZigZagCustom ZigZagCustom()
 		{
-			return indicator.ZigZagCustom(Input, depth, deviation, backstep);
+			return indicator.ZigZagCustom(Input);
 		}
 
-		public Indicators.ZigZagCustom ZigZagCustom(ISeries<double> input , int depth, double deviation, int backstep)
+		public Indicators.ZigZagCustom ZigZagCustom(ISeries<double> input )
 		{
-			return indicator.ZigZagCustom(input, depth, deviation, backstep);
+			return indicator.ZigZagCustom(input);
 		}
 	}
 }
@@ -179,14 +212,14 @@ namespace NinjaTrader.NinjaScript.Strategies
 {
 	public partial class Strategy : NinjaTrader.Gui.NinjaScript.StrategyRenderBase
 	{
-		public Indicators.ZigZagCustom ZigZagCustom(int depth, double deviation, int backstep)
+		public Indicators.ZigZagCustom ZigZagCustom()
 		{
-			return indicator.ZigZagCustom(Input, depth, deviation, backstep);
+			return indicator.ZigZagCustom(Input);
 		}
 
-		public Indicators.ZigZagCustom ZigZagCustom(ISeries<double> input , int depth, double deviation, int backstep)
+		public Indicators.ZigZagCustom ZigZagCustom(ISeries<double> input )
 		{
-			return indicator.ZigZagCustom(input, depth, deviation, backstep);
+			return indicator.ZigZagCustom(input);
 		}
 	}
 }
